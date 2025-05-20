@@ -1,37 +1,66 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.VisualBasic;
 using Serilog;
+using Serilog.Context;
+using System;
+using System.Diagnostics;
+using System.Timers;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace SerilogLearningDemo.Controllers
 {
     [Route("api/[controller]/[action]")]
+
     [ApiController]
     public class UserController:ControllerBase
     {
         private readonly SerilogDb _context;
-        public UserController(SerilogDb context)
+        private readonly ILogger<UserController> _logger;
+        private readonly IHttpClientFactory _http;
+
+        public UserController(SerilogDb context, ILogger<UserController> logger,IHttpClientFactory http)
         {
             _context = context;
+            _logger = logger;
+            _http = http;
+        }
+
+        [HttpPost]
+        public IActionResult CreateUser([FromBody] User user)
+        {
+            _logger.LogTrace("Bu trace log ");
+            var timestamp = DateTime.UtcNow;
+
+            using (LogContext.PushProperty("CreateTimeUtc", timestamp))
+            {
+                _context.Users.Add(user);
+                _context.SaveChanges();
+
+                _logger.LogInformation("Yangi foydalanuvchi yaratildi: {@User}", user);
+
+                return Ok(new
+                {
+                    Message = "Foydalanuvchi yaratildi",
+                    CreatedUser = user,
+                    CreatedAt = timestamp
+                });
+            }
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public IActionResult GetUsers()
         {
-            return Ok(await _context.Users.ToListAsync());
-        }
-        [HttpPost]
-        public async Task<IActionResult> CreateBackingField(User user)
-        {
-            await _context.Users.AddAsync(user);
-            await _context.SaveChangesAsync();
-            using (var log = new LoggerConfiguration()
-    .WriteTo.Console()
-    .CreateLogger())
+            var http = _http.CreateClient("serilog");
+            var baseAddress = http.BaseAddress;
+           
+            var users = _context.Users.ToList();
+            return Ok(new
             {
-                log.Information("This is an informational message.");
-                log.Warning("This is a warning for testing purposes.");
-}
-            return Ok(user);
+                baseAddress,
+                users
+            });
         }
     }
 }
